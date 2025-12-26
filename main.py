@@ -11,6 +11,7 @@ import tensorflow as tf
 # ================================
 
 app = FastAPI()
+api = APIRouter(prefix="/api")
 
 app.add_middleware(
     CORSMiddleware,
@@ -48,7 +49,7 @@ def get_mars_position(t):
 # API ROUTES
 # ================================
 
-@app.get("/")
+@api.get("/")
 def home():
     return {"status": "SmartSky backend running 🚀"}
 
@@ -56,7 +57,7 @@ def home():
 # Current Mars Position
 # -----------------------
 
-@app.get("/api/planet/mars")
+@api.get("/api/planet/mars")
 def mars_position():
     t = ts.now()
     x, y, z = get_mars_position(t)
@@ -71,7 +72,7 @@ def mars_position():
 # LSTM Prediction
 # -----------------------
 
-@app.get("/api/predict/mars")
+@api.get("/api/predict/mars")
 def predict_mars(days: int = Query(5, ge=1, le=30)):
 
     # Get last 7 days of Mars data
@@ -108,9 +109,11 @@ def predict_mars(days: int = Query(5, ge=1, le=30)):
         "planet": "mars",
         "predictions": predictions
     }
+app.include_router(api)o
 import os
 import uvicorn
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     uvicorn.run("main:app", host="0.0.0.0", port=port)
+
