@@ -6,8 +6,11 @@ import numpy as np
 import joblib
 
 from skyfield.api import load, utc
-from tensorflow.keras.models import load_model
+import onnxruntime as ort
+import numpy as np
 
+session = ort.InferenceSession("mars_lstm.onnx", providers=["CPUExecutionProvider"])
+input_name = session.get_inputs()[0].name
 app = FastAPI(title="SmartSky API")
 
 app.add_middleware(
