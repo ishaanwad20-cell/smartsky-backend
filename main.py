@@ -1,17 +1,16 @@
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
-
+from skyfield.api import load
+import numpy as np
 import datetime
-import numpy as np
 import joblib
+import tensorflow as tf
 
-from skyfield.api import load, utc
-import onnxruntime as ort
-import numpy as np
+# ================================
+# APP CONFIG
+# ================================
 
-session = ort.InferenceSession("mars_lstm.onnx", providers=["CPUExecutionProvider"])
-input_name = session.get_inputs()[0].name
-app = FastAPI(title="SmartSky API")
+app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
@@ -20,82 +19,92 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Load ephemeris and timescale
+# ================================
+# LOAD EPHEMERIS
+# ================================
+
 planets = load("de421.bsp")
 ts = load.timescale()
 
-# Load ML model and scaler ONCE
-lstm_model = load_model("mars_lstm.h5", compile=False)
+# ================================
+# LOAD ML MODEL
+# ================================
+
+lstm_model = tf.keras.models.load_model("mars_lstm.h5", compile=False)
 scaler = joblib.load("mars_scaler.pkl")
 
+# ================================
+# HELPER
+# ================================
 
-@app.get("/api/planet/{planet_name}")
-def planet_positions(
-    planet_name: str,
-    days: int = Query(3, ge=1, le=30)
-):
-    planet_name = planet_name.lower()
-
-    try:
-        target = planets[planet_name]
-    except KeyError:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Ephemeris data for '{planet_name}' not available."
-        )
-
+def get_mars_position(t):
+    mars = planets["mars"]
     earth = planets["earth"]
-    results = []
+    astrometric = earth.at(t).observe(mars)
+    x, y, z = astrometric.position.au
+    return x, y, z
 
-    for i in range(days):
-        now = datetime.datetime.utcnow().replace(tzinfo=utc)
-        t = ts.from_datetime(now + datetime.timedelta(days=i))
-        pos = earth.at(t).observe(target).apparent()
-        ra, dec, distance = pos.radec()
+# ================================
+# API ROUTES
+# ================================
 
-        results.append({
-            "date": (now + datetime.timedelta(days=i)).strftime("%Y-%m-%d"),
-            "ra_hours": round(ra.hours, 6),
-            "dec_degrees": round(dec.degrees, 6),
-            "distance_au": round(distance.au, 6),
-        })
+@app.get("/")
+def home():
+    return {"status": "SmartSky backend running 🚀"}
 
-    return results
+# -----------------------
+# Current Mars Position
+# -----------------------
 
+@app.get("/api/planet/mars")
+def mars_position():
+    t = ts.now()
+    x, y, z = get_mars_position(t)
+    return {
+        "time": t.utc_iso(),
+        "x_au": float(x),
+        "y_au": float(y),
+        "z_au": float(z)
+    }
+
+# -----------------------
+# LSTM Prediction
+# -----------------------
 
 @app.get("/api/predict/mars")
-def predict_mars(days: int = 5):
-    earth = planets["earth"]
-    target = planets["mars"]
+def predict_mars(days: int = Query(5, ge=1, le=30)):
 
+    # Get last 7 days of Mars data
     history = []
-
     for i in range(7):
-        now = datetime.datetime.utcnow().replace(tzinfo=utc)
-        t = ts.from_datetime(now - datetime.timedelta(days=7 - i))
-        pos = earth.at(t).observe(target).apparent()
-        ra, dec, _ = pos.radec()
-        history.append([ra.hours, dec.degrees])
+        t = ts.utc(datetime.datetime.utcnow() - datetime.timedelta(days=7 - i))
+        x, y, z = get_mars_position(t)
+        history.append([x, y])
 
-    history_np = np.array(history).reshape(1, 7, 2)
-    history_scaled = scaler.transform(
-        history_np.reshape(-1, 2)
-    ).reshape(1, 7, 2)
+    history = np.array(history)
 
-    preds = []
-    current = history_scaled
+    # Scale
+    history_scaled = scaler.transform(history).reshape(1, 7, 2)
+
+    predictions = []
+    current = history_scaled.copy()
 
     for i in range(days):
-        pred_scaled = lstm_model.predict(current, verbose=0)
-        pred = scaler.inverse_transform(pred_scaled)[0]
+        pred_scaled = lstm_model.predict(current)[0]
+        pred = scaler.inverse_transform(pred_scaled.reshape(1, -1))[0]
 
-        preds.append({
+        predictions.append({
             "day": i + 1,
-            "ra_hours": round(float(pred[0]), 6),
-            "dec_degrees": round(float(pred[1]), 6),
+            "x_au": float(pred[0]),
+            "y_au": float(pred[1])
         })
 
+        # Roll window
+        new_scaled = scaler.transform(pred.reshape(1, -1))
         current = np.roll(current, -1, axis=1)
-        current[0, -1, :] = pred_scaled[0]
+        current[0, -1] = new_scaled
 
-    return preds
+    return {
+        "planet": "mars",
+        "predictions": predictions
+    }
