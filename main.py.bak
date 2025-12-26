@@ -1,0 +1,203 @@
+from fastapi import FastAPI, HTTPException, Query
+from fastapi.middleware.cors import CORSMiddleware
+from skyfield.api import load, Topos
+import datetime
+from typing import Optional
+
+app = FastAPI(title="SmartSky API")
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+planets = load('de440.bsp')   # downloads first time
+ts = load.timescale()
+import numpy as np
+from typing import List
+
+# --- visualization endpoints added here ---
+
+def _get_planet_body(name: str):
+    name = name.lower()
+    mapping = {
+        'mercury': 'mercury',
+        'venus': 'venus',
+        'earth': 'earth',
+        'mars': 'mars',
+        'jupiter': 'jupiter barycenter' if 'jupiter barycenter' in planets.names() else 'jupiter',
+        'saturn': 'saturn barycenter' if 'saturn barycenter' in planets.names() else 'saturn',
+        'uranus': 'uranus',
+        'neptune': 'neptune',
+        'pluto': 'pluto' if 'pluto' in planets.names() else None,
+        'moon': 'moon',
+        'sun': 'sun',
+    }
+    return mapping.get(name)
+
+@app.get('/api/planet/{planet_name}/vector')
+def planet_vector(planet_name: str, time: str = None, frame: str = 'heliocentric'):
+    """Return Cartesian x,y,z (AU) for a planet at an ISO time (or now)."""
+    target = _get_planet_body(planet_name)
+    if target is None:
+        raise HTTPException(status_code=404, detail=f"Planet '{planet_name}' not supported")
+    try:
+        body = planets[target]
+    except Exception:
+        raise HTTPException(status_code=404, detail=f"Ephemeris for '{target}' missing")
+
+    if time:
+        try:
+            t_iso = time.replace('Z','')
+            if 'T' in t_iso:
+                datepart, timepart = t_iso.split('T')
+                y,mo,d = [int(x) for x in datepart.split('-')]
+                h,mn,s = [int(float(x)) for x in timepart.split(':')]
+                t = ts.utc(y,mo,d,h,mn,s)
+            else:
+                y,mo,d = [int(x) for x in t_iso.split('-')]
+                t = ts.utc(y,mo,d)
+        except Exception:
+            raise HTTPException(status_code=400, detail='Time must be ISO like 2025-11-20T00:00:00Z or YYYY-MM-DD')
+    else:
+        now = datetime.datetime.utcnow()
+        t = ts.utc(now.year, now.month, now.day, now.hour, now.minute, now.second)
+
+    try:
+        if frame == 'geocentric':
+            pos = planets['earth'].at(t).observe(body).apparent().position.au
+        else:
+            try:
+                pos = body.at(t).position.au
+            except Exception:
+                earth_pos = planets['earth'].at(t).position.au
+                obs_pos = planets['earth'].at(t).observe(body).apparent().position.au
+                pos = list(np.array(earth_pos) + np.array(obs_pos))
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    return {'planet': planet_name, 'time': t.utc_iso(), 'frame': frame, 'x_au': float(pos[0]), 'y_au': float(pos[1]), 'z_au': float(pos[2])}
+
+@app.get('/api/positions')
+def positions(planets_list: str = 'mars,venus', start: str = None, end: str = None, step_hours: int = 24, frame: str = 'heliocentric'):
+    """Return sampled positions for multiple planets between start and end (inclusive)."""
+    names = [p.strip().lower() for p in planets_list.split(',') if p.strip()]
+    if not names:
+        raise HTTPException(status_code=400, detail='No planets requested')
+    try:
+        if start:
+            s = datetime.datetime.fromisoformat(start)
+        else:
+            s = datetime.datetime.utcnow()
+        if end:
+            e = datetime.datetime.fromisoformat(end)
+        else:
+            e = s + datetime.timedelta(days=30)
+    except Exception:
+        raise HTTPException(status_code=400, detail='start/end must be ISO date YYYY-MM-DD')
+    if step_hours <= 0:
+        raise HTTPException(status_code=400, detail='step_hours must be positive')
+
+    total_seconds = (e - s).total_seconds()
+    step = int(max(1, step_hours) * 3600)
+    steps = int(total_seconds // step) + 1
+
+    results = {name: [] for name in names}
+    for i in range(steps):
+        current_dt = s + datetime.timedelta(seconds=i*step)
+        t = ts.utc(current_dt.year, current_dt.month, current_dt.day, current_dt.hour, current_dt.minute, current_dt.second)
+        for name in names:
+            mapped = _get_planet_body(name)
+            if mapped is None:
+                results[name].append({'time': current_dt.strftime('%Y-%m-%dT%H:%M:%SZ'), 'error': 'unsupported'})
+                continue
+            try:
+                body = planets[mapped]
+            except Exception:
+                results[name].append({'time': current_dt.strftime('%Y-%m-%dT%H:%M:%SZ'), 'error': 'ephemeris missing'})
+                continue
+            try:
+                if frame == 'geocentric':
+                    pos = planets['earth'].at(t).observe(body).apparent().position.au
+                else:
+                    try:
+                        pos = body.at(t).position.au
+                    except Exception:
+                        earth_pos = planets['earth'].at(t).position.au
+                        obs_pos = planets['earth'].at(t).observe(body).apparent().position.au
+                        pos = list(np.array(earth_pos) + np.array(obs_pos))
+                results[name].append({'time': current_dt.strftime('%Y-%m-%dT%H:%M:%SZ'), 'x_au': float(pos[0]), 'y_au': float(pos[1]), 'z_au': float(pos[2])})
+            except Exception as exc:
+                results[name].append({'time': current_dt.strftime('%Y-%m-%dT%H:%M:%SZ'), 'error': str(exc)})
+
+    return results
+
+@app.get("/api/planet/{planet_name}")
+def planet_positions(
+    planet_name: str,
+    days: int = Query(7, ge=1, le=365),
+    lat: Optional[float] = Query(None, description="Observer latitude in decimal degrees"),
+    lon: Optional[float] = Query(None, description="Observer longitude in decimal degrees"),
+):
+    """
+    If lat & lon supplied -> returns altitude & azimuth for the observer location.
+    If lat & lon NOT supplied -> returns geocentric RA/Dec and distance.
+    """
+    pname = planet_name.lower()
+    valid_planets = {
+        "mercury": "mercury",
+        "venus": "venus",
+        "earth": "earth",
+        "mars": "mars",
+        "jupiter": "jupiter barycenter" if 'jupiter barycenter' in planets.names() else "jupiter",
+        "saturn": "saturn barycenter" if 'saturn barycenter' in planets.names() else "saturn",
+        "uranus": "uranus",
+        "neptune": "neptune",
+        "pluto": "pluto" if 'pluto' in planets.names() else None,
+        "moon": "moon",
+        "sun": "sun",
+    }
+    if pname not in valid_planets or valid_planets[pname] is None:
+        raise HTTPException(status_code=404, detail=f"Planet '{planet_name}' not supported.")
+
+    target_name = valid_planets[pname]
+    try:
+        target = planets[target_name]
+    except KeyError:
+        raise HTTPException(status_code=404, detail=f"Ephemeris data for '{target_name}' not available.")
+
+    earth = planets["earth"]
+    now = datetime.datetime.utcnow()
+    out = []
+
+    for i in range(days):
+        t = ts.utc(now.year, now.month, now.day + i)
+        if lat is not None and lon is not None:
+            # compute alt/az for an observer location
+            observer = earth + Topos(latitude_degrees=lat, longitude_degrees=lon)
+            pos = observer.at(t).observe(target).apparent()
+            alt, az, distance = pos.altaz()
+            out.append({
+                "date": (now + datetime.timedelta(days=i)).strftime("%Y-%m-%d"),
+                "mode": "altaz",
+                "latitude": lat,
+                "longitude": lon,
+                "altitude_deg": None if alt is None else round(alt.degrees, 6),
+                "azimuth_deg": None if az is None else round(az.degrees, 6),
+                "distance_km": None if distance is None else round(distance.km, 6)
+            })
+        else:
+            # geocentric RA/Dec + distance (no observer required)
+            pos = earth.at(t).observe(target).apparent()
+            ra, dec, distance = pos.radec()
+            out.append({
+                "date": (now + datetime.timedelta(days=i)).strftime("%Y-%m-%d"),
+                "mode": "radec",
+                "ra_hours": round(ra.hours, 6),
+                "dec_degrees": round(dec.degrees, 6),
+                "distance_au": round(distance.au, 9)
+            })
+
+    return out

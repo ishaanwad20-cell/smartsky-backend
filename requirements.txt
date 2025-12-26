@@ -1,0 +1,9 @@
+fastapi
+uvicorn
+skyfield
+numpy==1.26.4
+pandas
+tensorflow-macos
+tensorflow-metal
+joblib
+python-multipart

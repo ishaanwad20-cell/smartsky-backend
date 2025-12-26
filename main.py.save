@@ -1,0 +1,86 @@
+from fastapi import FastAPI, HTTPException, Query from fastapi.middleware.cors import 
+CORSMiddleware from skyfield.api import load import datetime
+
+app = FastAPI(title="SmartSky API")
+
+app.add_middleware(
+    CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"],
+)
+
+# Load a stable ephemeris that supports named planets
+planets = load("de421.bsp")
+ts = load.timescale()
+
+@app.get("/api/planet/{planet_name}")
+def get_planet_position(
+    planet_name: str,
+    days: int = Query(3, ge=1, le=30)
+):
+    planet_name = planet_name.lower()
+
+    try:
+        target = planets[planet_name]
+    except KeyError:
+        raise HTTPException(
+            status_code=404,
+            detail=f"Ephemeris data for '{planet_name}' not available."
+        )
+
+    earth = planets["earth"]
+    now = datetime.datetime.utcnow()
+    results = []
+
+    for i in range(days):
+        t = ts.utc(now.year, now.month, now.day + i)
+        pos = earth.at(t).observe(target).apparent()
+        ra, dec, distance = pos.radec()
+
+        results.append({
+            "date": (now + datetime.timedelta(days=i)).strftime("%Y-%m-%d"),
+            "ra_hours": round(ra.hours, 6),
+            "dec_degrees": round(dec.degrees, 6),
+            "distance_au": round(distance.au, 6),
+        })
+
+    return results
+from tensorflow.keras.models import load_model
+import joblib
+import numpy as np
+
+# Load trained model & scaler (only once)
+lstm_model = load_model("mars_lstm.h5", compile=False)
+lstm_scaler = joblib.load("mars_scaler.pkl")
+
+@app.get("/api/predict/mars")
+def predict_mars(days: int = Query(3, ge=1, le=10)):
+    # Step 1: Collect last 7 real observations
+    history = []
+    for i in range(7):
+        t = ts.utc(datetime.datetime.utcnow() - datetime.timedelta(days=7 - i))
+        pos = planets["earth"].at(t).observe(planets["mars"]).apparent()
+        ra, dec, _ = pos.radec()
+        history.append([ra.hours, dec.degrees])
+
+    history = np.array(history)
+
+    # Step 2: Scale input
+    scaled_history = lstm_scaler.transform(history)
+    X = scaled_history.reshape(1, 7, 2)
+
+    predictions = []
+
+    # Step 3: Autoregressive prediction
+    for day in range(days):
+        next_scaled = lstm_model.predict(X, verbose=0)[0]
+        next_real = lstm_scaler.inverse_transform([next_scaled])[0]
+
+        predictions.append({
+            "day": day + 1,
+            "ra_hours": float(next_real[0]),
+            "dec_degrees": float(next_real[1])
+        })
+
+        # slide window
+        X = np.append(X[:, 1:, :], [[next_scaled]], axis=1)
+
+    return predictions

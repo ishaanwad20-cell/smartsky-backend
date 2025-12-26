@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>SmartSky Demo</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:#071428;color:#e6eef8;padding:20px}
+    .card{background:#0b1726;padding:18px;border-radius:8px;max-width:900px;margin:auto;box-shadow:0 8px 30px rgba(2,6,23,0.6)}
+    table{width:100%;border-collapse:collapse;margin-top:14px}
+    th,td{padding:8px 6px;border-bottom:1px solid rgba(255,255,255,0.06);text-align:left}
+    th{color:#9fb3d9;font-size:12px}
+    tr:nth-child(even){background:rgba(255,255,255,0.01)}
+    .controls{display:flex;gap:8px;align-items:center;margin-bottom:10px}
+    input,select,button{padding:8px;border-radius:6px;border:1px solid rgba(255,255,255,0.06);background:#071828;color:#e6eef8}
+    button{cursor:pointer}
+    .small{font-size:13px;color:#98a9c6}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h2>SmartSky — Live Demo</h2>
+    <div class="small">This demo fetches your FastAPI endpoint and shows RA/Dec (or Alt/Az).</div>
+    <div style="height:12px"></div>
+    <div class="controls">
+      <label>Planet:
+        <select id="planet">
+          <option value="mars">Mars</option>
+          <option value="venus">Venus</option>
+          <option value="jupiter">Jupiter</option>
+          <option value="saturn">Saturn</option>
+        </select>
+      </label>
+      <label>Days:
+        <input id="days" type="number" min="1" value="7" style="width:72px" />
+      </label>
+      <label>Lat:
+        <input id="lat" type="text" placeholder="19.0760" style="width:100px" />
+      </label>
+      <label>Lon:
+        <input id="lon" type="text" placeholder="72.8777" style="width:100px" />
+      </label>
+      <button id="go">Fetch</button>
+      <button id="example">Example (Mumbai)</button>
+    </div>
+    <div id="status" class="small">Backend URL: <code>http://127.0.0.1:8000/api/planet</code></div>
+    <div id="result" style="margin-top:12px"></div>
+  </div>
+<script>
+const apiBase = "http://127.0.0.1:8000/api/planet";
+function toHtmlTable(data){
+  if(!Array.isArray(data) || data.length===0) return "<div class='small'>No data returned</div>";
+  const keys = Object.keys(data[0]);
+  let html = "<table><thead><tr>";
+  keys.forEach(k=> html += `<th>${k}</th>`);
+  html += "</tr></thead><tbody>";
+  data.forEach(row=>{
+    html += "<tr>";
+    keys.forEach(k=>{
+      let v = row[k];
+      if(v===null||v===undefined) v = "";
+      html += `<td>${String(v)}</td>`;
+    });
+    html += "</tr>";
+  });
+  html += "</tbody></table>";
+  return html;
+}
+async function fetchPlanet(){
+  const planet = document.getElementById('planet').value;
+  const days = document.getElementById('days').value || 7;
+  const lat = document.getElementById('lat').value.trim();
+  const lon = document.getElementById('lon').value.trim();
+  let url = `${apiBase}/${planet}?days=${days}`;
+  if(lat && lon) url += `&lat=${encodeURIComponent(lat)}&lon=${encodeURIComponent(lon)}`;
+  document.getElementById('status').textContent = "Fetching: " + url;
+  try{
+    const res = await fetch(url);
+    if(!res.ok) throw new Error("HTTP "+res.status);
+    const data = await res.json();
+    document.getElementById('result').innerHTML = toHtmlTable(data);
+    document.getElementById('status').textContent = "Last fetch: " + new Date().toLocaleString();
+  }catch(e){
+    document.getElementById('result').innerHTML = "<div class='small' style='color:#ffb4b4'>Error: "+e.message+"</div>";
+    document.getElementById('status').textContent = "Error fetching. Make sure backend is running.";
+  }
+}
+document.getElementById('go').addEventListener('click', fetchPlanet);
+document.getElementById('example').addEventListener('click', ()=>{
+  document.getElementById('lat').value = "19.0760";
+  document.getElementById('lon').value = "72.8777";
+  fetchPlanet();
+});
+fetchPlanet();
+</script>
+</body>
+</html>

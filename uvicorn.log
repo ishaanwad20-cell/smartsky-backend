@@ -1,0 +1,93 @@
+INFO:     Will watch for changes in these directories: ['/Users/ishaananandwad/SmartSky/backend']
+INFO:     Uvicorn running on http://127.0.0.1:8000 (Press CTRL+C to quit)
+INFO:     Started reloader process [2244] using StatReload
+INFO:     Started server process [2248]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:49510 - "GET /api/planet/mars?days=3 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49512 - "GET /api/planet/mars?days=30 HTTP/1.1" 200 OK
+WARNING:  StatReload detected changes in 'train_lstm.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [2248]
+INFO:     Started server process [8351]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'train_lstm.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [8351]
+INFO:     Started server process [12860]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+WARNING:  StatReload detected changes in 'venv/lib/python3.9/site-packages/google/protobuf/descriptor.py'. Reloading...
+INFO:     Shutting down
+INFO:     Waiting for application shutdown.
+INFO:     Application shutdown complete.
+INFO:     Finished server process [12860]
+Traceback (most recent call last):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py", line 197, in _run_module_as_main
+    return _run_code(code, main_globals, None,
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/runpy.py", line 87, in _run_code
+    exec(code, run_globals)
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/__main__.py", line 4, in <module>
+    uvicorn.main()
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/click/core.py", line 1161, in __call__
+    return self.main(*args, **kwargs)
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/click/core.py", line 1082, in main
+    rv = self.invoke(ctx)
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/click/core.py", line 1443, in invoke
+    return ctx.invoke(self.callback, **ctx.params)
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/click/core.py", line 788, in invoke
+    return __callback(*args, **kwargs)
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/main.py", line 423, in main
+    run(
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/main.py", line 588, in run
+    ChangeReload(config, target=server.run, sockets=[sock]).run()
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/supervisors/basereload.py", line 53, in run
+    for changes in self:
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/supervisors/basereload.py", line 72, in __next__
+    return self.should_restart()
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/supervisors/statreload.py", line 32, in should_restart
+    for file in self.iter_py_files():
+  File "/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/uvicorn/supervisors/statreload.py", line 52, in iter_py_files
+    for path in list(reload_dir.rglob("*.py")):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 1180, in rglob
+    for p in selector.select_from(self):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 601, in _select_from
+    for p in successor_select(starting_point, is_dir, exists, scandir):
+  File "/Library/Developer/CommandLineTools/Library/Frameworks/Python3.framework/Versions/3.9/lib/python3.9/pathlib.py", line 548, in _select_from
+    with scandir(parent_path) as scandir_it:
+FileNotFoundError: [Errno 2] No such file or directory: '/Users/ishaananandwad/SmartSky/backend/venv/lib/python3.9/site-packages/~umpy-2.0.2.dist-info'
+INFO:     Started server process [13961]
+INFO:     Waiting for application startup.
+INFO:     Application startup complete.
+INFO:     127.0.0.1:49735 - "GET /api/planet/mars?days=7 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49756 - "GET /api/planet/jupiter?days=7 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49756 - "GET /api/planet/jupiter?days=7 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49756 - "GET /api/planet/jupiter?days=7&lat=19.0760&lon=72.8777 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49757 - "GET /api/planet/mars?days=7&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49757 - "GET /api/planet/venus?days=7&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49763 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49765 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49771 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49771 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49771 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49771 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49771 - "GET /api/planet/mars?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49774 - "GET /api/planet/jupiter?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49775 - "GET /api/planet/venus?days=50&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49776 - "GET /api/planet/venus?days=700&lat=19.0760&lon=72.8777 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:49776 - "GET /api/planet/venus?days=700&lat=19.0760&lon=72.8777 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:49777 - "GET /api/planet/mars?days=700&lat=19.0760&lon=72.8777 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:49777 - "GET /api/planet/mars?days=700&lat=19.0760&lon=72.8777 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:49777 - "GET /api/planet/mars?days=700&lat=19.0760&lon=72.8777 HTTP/1.1" 422 Unprocessable Entity
+INFO:     127.0.0.1:49777 - "GET /api/planet/mars?days=70&lat=19.0760&lon=72.8777 HTTP/1.1" 200 OK
+INFO:     127.0.0.1:49780 - "GET /api/planet/mars/vector HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49781 - "GET /api/positions?planets=mars,venus&start=2025-11-20&end=2025-12-20&step_hours=24 HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49787 - "GET /api/planet/mars/vector HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49788 - "GET /api/planet/mars/vector HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49820 - "GET /api/planet/mars/vector HTTP/1.1" 404 Not Found
+INFO:     127.0.0.1:49825 - "GET /openapi.json HTTP/1.1" 200 OK
