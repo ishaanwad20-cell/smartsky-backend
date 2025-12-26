@@ -28,7 +28,7 @@ y = np.array(y)
 
 # Build LSTM model
 model = Sequential([
-    LSTM(64, input_shape=(window, 2)),
+LSTM(64, input_shape=(window, 2), return_sequences=False, implementation=2),
     Dense(2)
 ])
 
