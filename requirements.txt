@@ -6,3 +6,4 @@ pandas
 tensorflow-cpu==2.16.1
 joblib
 python-multipart
+scikit-learn==1.4.2
