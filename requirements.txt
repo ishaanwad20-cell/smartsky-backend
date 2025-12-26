@@ -1,9 +1,8 @@
 fastapi
 uvicorn
-skyfield
 numpy==1.26.4
 pandas
-tensorflow-macos
-tensorflow-metal
+skyfield
+onnxruntime
 joblib
 python-multipart
