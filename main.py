@@ -108,3 +108,9 @@ def predict_mars(days: int = Query(5, ge=1, le=30)):
         "planet": "mars",
         "predictions": predictions
     }
+import os
+import uvicorn
+
+if __name__ == "__main__":
+    port = int(os.environ.get("PORT", 8000))
+    uvicorn.run("main:app", host="0.0.0.0", port=port)
