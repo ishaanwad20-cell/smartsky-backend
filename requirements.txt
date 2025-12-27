@@ -1,9 +1,8 @@
 fastapi
 uvicorn
 skyfield
-numpy==1.26.4
+numpy
 pandas
-tensorflow-cpu==2.16.1
+tensorflow
 joblib
 python-multipart
-scikit-learn==1.4.2

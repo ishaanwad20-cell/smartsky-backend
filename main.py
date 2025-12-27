@@ -1,17 +1,15 @@
-import os
-os.environ["KERAS_BACKEND"] = "tensorflow"
-
-from fastapi import FastAPI, Query
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 import numpy as np
-import tensorflow as tf
-import joblib
 import datetime
+import pytz
+import joblib
+import tensorflow as tf
+
 from skyfield.api import load
 
-# ----------------------------------------
-# FastAPI App
-# ----------------------------------------
+# ------------------ App Setup ------------------
+
 app = FastAPI()
 
 app.add_middleware(
@@ -21,119 +19,86 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# ----------------------------------------
-# Load AI Model & Scaler
-# ----------------------------------------
+# ------------------ Load Ephemeris ------------------
+
+eph = load("de421.bsp")
+ts = load.timescale()
+
+# ------------------ Load AI Model ------------------
+
 model = tf.keras.models.load_model("mars_lstm.h5", compile=False)
 scaler = joblib.load("mars_scaler.pkl")
 
-# ----------------------------------------
-# Load NASA Ephemeris
-# ----------------------------------------
-ts = load.timescale()
-eph = load("de421.bsp")
-earth = eph["earth"]
-mars = eph["mars"]
+# ------------------ Physics Engine ------------------
 
-# ----------------------------------------
-# Helpers
-# ----------------------------------------
-def get_mars_position(t):
-    astrometric = earth.at(t).observe(mars)
-    x, y, z = astrometric.position.au
-    return float(x), float(y), float(z)
+def get_planet_position(planet_name, t):
+    sun = eph["sun"]
+    planet = eph[planet_name]
+    pos = sun.at(t).observe(planet).position.km
+    return float(pos[0]), float(pos[1]), float(pos[2])
 
-# ----------------------------------------
-# Health Check (Render needs this)
-# ----------------------------------------
-@app.get("/")
-def home():
-    return {"status": "SmartSky backend running"}
+# ------------------ Planets ------------------
 
-# ----------------------------------------
-# Planetary Positions API (Lovable)
-# ----------------------------------------
-@app.get("/api/planets")
-def get_planets(
-    planets: str,
-    startDate: str,
-    endDate: str
-):
-    planet_list = [p.strip().lower() for p in planets.split(",")]
+PLANETS = ["mercury","venus","earth","mars","jupiter","saturn","uranus","neptune"]
 
-    start = datetime.datetime.fromisoformat(startDate).replace(tzinfo=datetime.timezone.utc)
-    end = datetime.datetime.fromisoformat(endDate).replace(tzinfo=datetime.timezone.utc)
+# ------------------ REAL POSITIONS ------------------
 
-    data = {}
+@app.get("/api/planet/{planet}")
+def get_planet(planet: str, days: int = 5):
+    planet = planet.lower()
 
-    current = start
-    while current <= end:
-        t = ts.utc(current)
+    if planet not in PLANETS:
+        return {"error": "Invalid planet"}
 
-        if "mars" in planet_list:
-            x, y, z = get_mars_position(t)
-            data.setdefault("mars", []).append({
-                "date": current.isoformat(),
-                "x": x,
-                "y": y,
-                "z": z
-            })
+    results = []
+    now = datetime.datetime.now(pytz.UTC)
 
-        current += datetime.timedelta(days=1)
+    for i in range(days):
+        t = ts.utc(now + datetime.timedelta(days=i))
+        x,y,z = get_planet_position(planet, t)
+        results.append({"day": i, "x": x, "y": y, "z": z})
 
-    return data
+    return {"planet": planet, "type": "physics", "data": results}
 
-# ----------------------------------------
-# Mars AI Prediction (Lovable)
-# ----------------------------------------
-@app.get("/api/predict/mars")
-def predict_mars(days: int = 5):
+# ------------------ AI PREDICTIONS ------------------
+
+AI_PLANETS = ["mercury","venus","earth","mars","jupiter","saturn","uranus","neptune"]
+
+@app.get("/api/predict/{planet}")
+def predict_planet(planet: str, days: int = 30):
+    planet = planet.lower()
+
+    if planet not in AI_PLANETS:
+        return {"error": "Planet not supported"}
+
+    # Get last 7 days of physics data
     history = []
-    now = datetime.datetime.now(datetime.timezone.utc)
+    now = datetime.datetime.now(pytz.UTC)
 
-    # last 7 days of Mars data
     for i in range(7):
         t = ts.utc(now - datetime.timedelta(days=7 - i))
-        x, y, z = get_mars_position(t)
+        x, y, z = get_planet_position(planet, t)
         history.append([x, y])
 
     history = np.array(history)
-    history_scaled = scaler.transform(history).reshape(1, 7, 2)
+    history_scaled = scaler.transform(history).reshape(1,7,2)
 
-    predictions = []
-    current = history_scaled
+    preds = []
 
-    for _ in range(days):
-        pred = model.predict(current, verbose=0)[0]
-        predictions.append(pred)
-
-        current = np.roll(current, -1, axis=1)
-        current[0, -1] = pred
-
-    predictions = scaler.inverse_transform(predictions)
-
-    output = []
     for i in range(days):
-        output.append({
-            "day": i + 1,
-            "x": float(predictions[i][0]),
-            "y": float(predictions[i][1])
-        })
+        p = model.predict(history_scaled, verbose=0)[0]
+        preds.append({"day": i, "x": float(p[0]), "y": float(p[1])})
+        history_scaled = np.roll(history_scaled, -1, axis=1)
+        history_scaled[0,-1] = p
 
+    return {"planet": planet, "type": "AI_prediction", "data": preds}
+
+# ------------------ Health Check ------------------
+
+@app.get("/")
+def home():
     return {
-        "planet": "Mars",
-        "predictions": output
+        "status": "SmartSky Backend Running",
+        "planets": PLANETS,
+        "ai_enabled": AI_PLANETS
     }
-
-# ----------------------------------------
-# Lovable Prediction API Wrapper
-# ----------------------------------------
-@app.get("/api/predictions")
-def lovable_predictions(
-    planets: str = Query(...),
-    days: int = 30
-):
-    if planets.lower() != "mars":
-        return {"error": "Only Mars AI available in this version"}
-
-    return predict_mars(days)
