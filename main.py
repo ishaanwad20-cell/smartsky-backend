@@ -1,136 +1,132 @@
-import datetime
-import numpy as np
-import joblib
-import tensorflow as tf
+import os
+os.environ["KERAS_BACKEND"] = "tensorflow"
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+import numpy as np
+import tensorflow as tf
+import joblib
+import datetime
+from skyfield.api import load
 
-from skyfield.api import load, utc
-
-# ---------------------------
+# ----------------------------------------
 # App
-# ---------------------------
+# ----------------------------------------
 app = FastAPI()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ---------------------------
-# Load astronomy data
-# ---------------------------
-ts = load.timescale()
-planets = load("de421.bsp")
-earth = planets["earth"]
-mars = planets["mars"]
-
-# ---------------------------
-# Load AI
-# ---------------------------
-model = tf.keras.models.load_model("mars_lstm.h5")
+# ----------------------------------------
+# Load AI model & scaler
+# ----------------------------------------
+model = tf.keras.models.load_model("mars_lstm.h5", compile=False)
 scaler = joblib.load("mars_scaler.pkl")
 
-# ---------------------------
-# Utilities
-# ---------------------------
-def get_mars_position(t):
-    pos = earth.at(t).observe(mars).position.au
-    return pos[0], pos[1], pos[2]
+# ----------------------------------------
+# Load ephemeris
+# ----------------------------------------
+ts = load.timescale()
+eph = load("de421.bsp")
+earth = eph["earth"]
+mars = eph["mars"]
 
-# ---------------------------
-# Root
-# ---------------------------
+# ----------------------------------------
+# Helpers
+# ----------------------------------------
+def get_mars_position(t):
+    astrometric = earth.at(t).observe(mars)
+    x, y, z = astrometric.position.au
+    return float(x), float(y), float(z)
+
+# ----------------------------------------
+# Routes
+# ----------------------------------------
+
 @app.get("/")
-def root():
+def home():
     return {"status": "SmartSky backend running 🚀"}
 
-# ---------------------------
-# AI Prediction
-# ---------------------------
+@app.get("/api/planet/mars")
+def live_mars():
+    t = ts.now()
+    x, y, z = get_mars_position(t)
+    return {
+        "time": t.utc_iso(),
+        "x_au": x,
+        "y_au": y,
+        "z_au": z
+    }
+
 @app.get("/api/predict/mars")
 def predict_mars(days: int = 5):
-
-    # Build last 7 days of Mars history
+    # Build 7-day history
     history = []
-    now = datetime.datetime.now(datetime.timezone.utc)
 
     for i in range(7):
-        t = ts.utc(now - datetime.timedelta(days=7 - i))
+        t = ts.utc(
+            datetime.datetime.now(datetime.timezone.utc)
+            - datetime.timedelta(days=7 - i)
+        )
         x, y, z = get_mars_position(t)
         history.append([x, y])
 
     history = np.array(history)
-    scaled = scaler.transform(history)
-    X = scaled.reshape(1, 7, 2)
+    history_scaled = scaler.transform(history)
+    history_scaled = history_scaled.reshape(1, 7, 2)
 
-    predictions = []
-
-    last = X.copy()
+    preds = []
 
     for i in range(days):
-        pred = model.predict(last, verbose=0)[0]
-        unscaled = scaler.inverse_transform([pred])[0]
+        pred = model.predict(history_scaled, verbose=0)[0]
+        preds.append({"day": i+1, "x": float(pred[0]), "y": float(pred[1])})
 
-        date = (now + datetime.timedelta(days=i + 1)).date().isoformat()
-
-        predictions.append({
-            "date": date,
-            "x_au": float(unscaled[0]),
-            "y_au": float(unscaled[1])
-        })
-
-        next_scaled = scaler.transform([unscaled])
-        last = np.append(last[:, 1:, :], next_scaled.reshape(1, 1, 2), axis=1)
+        next_step = np.array([[pred[0], pred[1]]])
+        next_step = scaler.transform(next_step)
+        history_scaled = np.append(history_scaled[:,1:,:], [[next_step]], axis=1)
 
     return {
         "planet": "Mars",
-        "days": days,
-        "predictions": predictions
+        "predictions": preds
     }
 
-# ---------------------------
-# Live Mars Position
-# ---------------------------
-@app.get("/api/planet/mars")
-def mars_now():
-    t = ts.now()
-    x, y, z = get_mars_position(t)
-
-    return {
-        "time": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-        "x_au": float(x),
-        "y_au": float(y),
-        "z_au": float(z)
-    }
-
-# ---------------------------
-# Lovable compatibility
-# ---------------------------
-@app.get("/api/planets")
-def lovable_planets(planets: str, startDate: str, endDate: str):
-    return {
-        "status": 200,
-        "planets": planets.split(","),
-        "data": [],
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
-    }
+# ----------------------------------------
+# Lovable-compatible endpoints
+# ----------------------------------------
 
 @app.get("/api/predictions")
-def lovable_predictions(planets: str, days: int = 30):
-    if "mars" not in planets.lower():
-        return {"status": 200, "data": []}
+def lovable_predictions(planets: str = "Mars", days: int = 30):
+    data = predict_mars(days)
+    return data
 
-    ai = predict_mars(days)
+@app.get("/api/planets")
+def lovable_planets(
+    planets: str,
+    startDate: str,
+    endDate: str
+):
+    start = datetime.datetime.fromisoformat(startDate).replace(tzinfo=datetime.timezone.utc)
+    end = datetime.datetime.fromisoformat(endDate).replace(tzinfo=datetime.timezone.utc)
+
+    results = []
+
+    current = start
+    while current <= end:
+        t = ts.utc(current)
+        x, y, z = get_mars_position(t)
+        results.append({
+            "date": current.isoformat(),
+            "x": x,
+            "y": y,
+            "z": z
+        })
+        current += datetime.timedelta(days=1)
 
     return {
-        "status": 200,
-        "planet": "Mars",
-        "days": days,
-        "data": ai["predictions"],
-        "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat()
+        "planet": planets,
+        "data": results
     }
